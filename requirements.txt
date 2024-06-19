@@ -1,0 +1,6 @@
+streamlit
+python-dotenv
+pdfplumber
+openai==0.27.8
+langchain==0.0.270
+kor==0.10.0
