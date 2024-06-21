@@ -5,6 +5,8 @@ from langchain.chat_models import AzureChatOpenAI
 from kor.extraction import create_extraction_chain
 from kor.nodes import Object, Text
 import pdfplumber
+import pytesseract
+from pdf2image import convert_from_path
 
 # Constants
 MAX_TOKENS = 4096
@@ -17,6 +19,17 @@ def extract_text_from_pdf(pdf_path):
             text += page.extract_text() + "\n"
     return text
 
+def extract_text_from_image(pdf_path):
+    try:
+        images = convert_from_path(pdf_path)
+        text = ""
+        for image in images:
+            text += pytesseract.image_to_string(image)
+        return text
+    except Exception as e:
+        st.error(f"Error extracting text from image: {e}")
+        return ""
+    
 # Streamlit app
 def main():
     st.title("Invoice PDF Parser")
@@ -30,9 +43,14 @@ def main():
             f.write(uploaded_file.getbuffer())
 
         # Extract text from the PDF
-        text = extract_text_from_pdf("temp_file.pdf")
-        # processed_text = " ".join(text.split("\n"))
-        processed_text = text
+        processed_text = extract_text_from_pdf("temp_file.pdf")
+        st.write(f"Extracted text from PDF: {processed_text}")
+     
+        if not processed_text.strip():
+            st.warning("No text extracted from PDF. Trying to extract text from images in the PDF.")
+            # Extract text from the images in the PDF
+            processed_text = extract_text_from_image("temp_file.pdf")
+        
         # check if the text is extracted is not empty
         if not processed_text:
             st.error("No text extracted from PDF. Please upload a different PDF file.")
@@ -317,12 +335,20 @@ def main():
         # Extract the invoice number
         invoice_chain = create_extraction_chain(llm, invoice_schema)
         invoice = invoice_chain.predict_and_parse(text=processed_text)["data"]
+        # check if the invoice number is not empty
+        if not invoice['invoice_extraction']:
+            st.error("No invoice number extracted from Invoice.")
+            return
         st.subheader("Invoice Details")
         st.json(invoice)
         
         # Extract the Remit address
         remit_address_chain = create_extraction_chain(llm, remit_address_schema)
         remit_address = remit_address_chain.predict_and_parse(text=processed_text)["data"]
+        # check if the remit address is not empty
+        if not remit_address['remit_address']:
+            st.error("No remit address extracted from Invoice.")
+            return
         st.subheader("Remit To Address Details")
         st.json(remit_address)
         
@@ -330,12 +356,20 @@ def main():
         billing_address_chain = create_extraction_chain(llm, billing_address_schema)
         billing_address = billing_address_chain.predict_and_parse(text=processed_text)["data"]
         st.subheader("Billing Address Details")
+        # check if the billing address is not empty
+        if not billing_address['billing_address']:
+            st.error("No billing address extracted from Invoice.")
+            return
         st.json(billing_address['billing_address'][0])
         
         # Extract the shipping address
         shipping_address_chain = create_extraction_chain(llm, shipping_address_schema)
         shipping_address = shipping_address_chain.predict_and_parse(text=processed_text)["data"]
         st.subheader("Shipping Address Details")
+        # check if the shipping address is not empty
+        if not shipping_address['shipping_address']:
+            st.error("No shipping address extracted from Invoice.")
+            return
         st.json(shipping_address['shipping_address'][0])
 
         # Extract the product address
